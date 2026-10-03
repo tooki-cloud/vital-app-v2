@@ -1,0 +1,649 @@
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>薬剤師用管理ダッシュボード</title>
+    <!-- Chart.js 読み込み -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: #1a202c; color: #2d3748; min-height: 100vh; padding: 15px; }
+
+        /* 認証モーダル */
+        .auth-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.95);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 9999;
+        }
+        .auth-card {
+            background: #ffffff; padding: 30px; border-radius: 16px;
+            width: 360px; text-align: center; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3);
+        }
+        .auth-card h2 { font-size: 1.2rem; margin-bottom: 8px; color: #1e293b; }
+        .auth-card p { font-size: 0.8rem; color: #64748b; margin-bottom: 12px; }
+        .auth-card input {
+            width: 100%; padding: 10px; margin: 6px 0;
+            border: 1px solid #cbd5e1; border-radius: 8px; font-size: 1rem; text-align: center;
+        }
+        .auth-card button {
+            width: 100%; padding: 10px; background: #2563eb; color: white;
+            border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 10px;
+        }
+        .error-msg { color: #ef4444; font-size: 0.8rem; margin-top: 8px; display: none; }
+
+        /* ダッシュボードレイアウト */
+        .dashboard-container {
+            width: 100%; max-width: 1150px; margin: 0 auto; background: #edf2f7;
+            border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 16px;
+        }
+        .header-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            background: #ffffff; padding: 10px 20px; border-radius: 12px; font-weight: bold;
+        }
+
+        /* パスワード変更ボタン用スタイル */
+        .change-pass-btn {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: #475569;
+            transition: background 0.2s;
+        }
+        .change-pass-btn:hover {
+            background: #f1f5f9;
+        }
+
+        .main-content { display: grid; grid-template-columns: 180px 1fr; gap: 16px; }
+
+        /* 左側患者リスト */
+        .patient-list-card {
+            background: #ffffff; border-radius: 12px; padding: 12px; height: 520px; overflow-y: auto;
+        }
+        .patient-list-card h3 { font-size: 0.85rem; color: #64748b; margin-bottom: 10px; text-align: center; }
+        .patient-item {
+            padding: 10px 8px; border-bottom: 1px solid #e2e8f0; cursor: pointer;
+            text-align: center; border-radius: 6px; transition: background 0.2s;
+            display: flex; align-items: center; justify-content: center; gap: 4px;
+        }
+        .patient-item:hover, .patient-item.active { background: #cbd5e1; }
+        
+        /* 通常時のID文字 */
+        .patient-id-text { font-weight: bold; color: #1e293b; font-size: 0.95rem; }
+        
+        /* 未読メッセージがある場合の赤文字スタイル */
+        .patient-id-text.has-unread {
+            color: #ef4444 !important;
+            font-weight: 800;
+        }
+        .unread-badge {
+            width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%; display: inline-block;
+        }
+
+        /* 右側詳細エリア */
+        .detail-area { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+        .patient-info-card {
+            background: #ffffff; border-radius: 12px; padding: 12px 20px;
+            display: flex; gap: 24px; align-items: center; position: relative;
+        }
+        .info-group { display: flex; flex-direction: column; }
+        .info-label { font-size: 0.75rem; color: #64748b; }
+        .info-val { font-size: 1.1rem; font-weight: bold; }
+
+        /* 相談を開くボタン */
+        .chat-open-btn {
+            margin-left: auto; background: #2563eb; color: #ffffff; border: none;
+            padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: bold;
+            cursor: pointer; display: flex; align-items: center; gap: 6px;
+            box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2); transition: background 0.2s;
+            position: relative;
+        }
+        .chat-open-btn:hover { background: #1d4ed8; }
+        .chat-open-btn.has-unread {
+            background: #ef4444;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-width: 0; }
+        .chart-card { background: #ffffff; border-radius: 12px; padding: 14px; min-width: 0; }
+        .chart-title { font-size: 0.85rem; font-weight: bold; margin-bottom: 8px; color: #334155; }
+        .chart-box { height: 380px; position: relative; width: 100%; }
+
+        /* 患者相談画面（モーダル） */
+        .chat-modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px);
+            display: none; justify-content: center; align-items: center; z-index: 10000;
+        }
+        .phone-frame {
+            width: 360px; height: 640px; background: #ffffff; border-radius: 32px;
+            border: 2px solid #cbd5e1; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            display: flex; flex-direction: column; overflow: hidden; position: relative;
+        }
+        .chat-header {
+            padding: 14px 16px 10px; border-bottom: 1px solid #e2e8f0;
+            display: flex; align-items: center; justify-content: space-between;
+            background: #ffffff;
+        }
+        .back-btn { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #64748b; }
+        .chat-title-group { text-align: center; }
+        .chat-title-text { font-size: 1rem; font-weight: bold; color: #1e293b; }
+        .status-dot { font-size: 0.75rem; color: #10b981; font-weight: 500; }
+        .search-icon { font-size: 1.1rem; color: #8b5cf6; }
+
+        .chat-body {
+            flex: 1; padding: 16px; overflow-y: auto; background: #ffffff;
+            display: flex; flex-direction: column; gap: 12px;
+        }
+        .message-row { display: flex; gap: 8px; max-width: 85%; align-items: flex-start; }
+        .message-row.pharmacist { align-self: flex-end; flex-direction: row-reverse; }
+        .message-row.patient { align-self: flex-start; }
+
+        .avatar {
+            width: 32px; height: 32px; border-radius: 50%; background: #eff6ff;
+            display: flex; align-items: center; justify-content: center; font-size: 0.9rem; flex-shrink: 0;
+            border: 1px solid #dbeafe;
+        }
+        .bubble {
+            padding: 10px 14px; border-radius: 16px; font-size: 0.85rem; line-height: 1.4;
+            word-break: break-word;
+        }
+        .message-row.patient .bubble {
+            background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; border-top-left-radius: 4px;
+        }
+        .message-row.pharmacist .bubble {
+            background: #2563eb; color: #ffffff; border-top-right-radius: 4px;
+        }
+
+        .chat-footer {
+            padding: 10px 14px; border-top: 1px solid #f1f5f9; display: flex;
+            align-items: center; gap: 8px; background: #ffffff;
+        }
+        .plus-btn { background: none; border: none; font-size: 1.2rem; color: #64748b; cursor: pointer; }
+        .input-wrapper {
+            flex: 1; display: flex; align-items: center; background: #ffffff;
+            border: 1px solid #cbd5e1; border-radius: 20px; padding: 4px 12px;
+        }
+        .chat-input {
+            width: 100%; border: none; outline: none; font-size: 0.85rem; background: transparent; padding: 4px 0;
+        }
+        .send-btn {
+            width: 32px; height: 32px; border-radius: 50%; background: #1e293b; color: white;
+            border: none; display: flex; align-items: center; justify-content: center;
+            cursor: pointer; font-size: 0.8rem; flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+
+<!-- 認証モーダル -->
+<div class="auth-overlay" id="authOverlay">
+    <div class="auth-card" id="setupBox" style="display: {% if is_password_set %}none{% else %}block{% endif %};">
+        <h2>⚙️ 初回設定</h2>
+        <p>薬剤師画面用のパスワードを設定してください</p>
+        <input type="password" id="newPassInput" placeholder="新しいパスワード">
+        <input type="password" id="confirmPassInput" placeholder="パスワードの確認">
+        <button onclick="setPassword()">登録してログイン</button>
+        <div class="error-msg" id="setupErrorMsg">パスワードが一致しません</div>
+    </div>
+
+    <div class="auth-card" id="loginBox" style="display: {% if is_password_set %}block{% else %}none{% endif %};">
+        <h2>🔐 薬剤師認証</h2>
+        <p>パスワードを入力してください</p>
+        <input type="password" id="passInput" placeholder="パスワード">
+        <button onclick="checkPassword()">ログイン</button>
+        <div class="error-msg" id="loginErrorMsg">パスワードが違います</div>
+    </div>
+</div>
+
+<!-- パスワード変更用モーダル -->
+<div class="auth-overlay" id="changePasswordOverlay" style="display: none;">
+    <div class="auth-card">
+        <h2>🔒 パスワード変更</h2>
+        <p>現在のパスワードと新しいパスワードを入力してください</p>
+        <input type="password" id="currentPassChange" placeholder="現在のパスワード">
+        <input type="password" id="newPassChange" placeholder="新しいパスワード">
+        <button onclick="submitChangePassword()">変更</button>
+        <button onclick="closeChangePasswordModal()" style="background: #94a3b8; margin-top: 6px;">キャンセル</button>
+        <div class="error-msg" id="changeErrorMsg"></div>
+    </div>
+</div>
+
+<div class="dashboard-container">
+    <div class="header-bar">
+        <span>Pharmacist Portal</span>
+        <h2>薬剤師用管理ダッシュボード</h2>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <button class="change-pass-btn" onclick="openChangePasswordModal()">🔒 パスワード変更</button>
+            <span>RxNet</span>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <!-- 左側：研究者ID一覧 -->
+        <div class="patient-list-card">
+            <h3>研究者ID 一覧</h3>
+            <div id="patientListContainer"></div>
+        </div>
+
+        <!-- 右側：患者データ詳細表示 -->
+        <div class="detail-area">
+            <div class="patient-info-card">
+                <div style="font-size: 2rem;">👤</div>
+                <div class="info-group">
+                    <span class="info-label">研究者ID</span>
+                    <span class="info-val" id="selectedId">-</span>
+                </div>
+                <div class="info-group">
+                    <span class="info-label">最新血圧</span>
+                    <span class="info-val" id="selectedBp">- / -</span>
+                </div>
+                <div class="info-group">
+                    <span class="info-label">最新脈拍</span>
+                    <span class="info-val" id="selectedPulse">- bpm</span>
+                </div>
+                <div class="info-group">
+                    <span class="info-label">最新体重</span>
+                    <span class="info-val" id="selectedWeight">- kg</span>
+                </div>
+
+                <!-- 相談を開くボタン -->
+                <button class="chat-open-btn" id="chatOpenBtn" onclick="openChatModal()">
+                    💬 相談を開く
+                </button>
+            </div>
+
+            <!-- グラフエリア -->
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <div class="chart-title">血圧・脈拍推移詳細 (DETAILED BP & PULSE)</div>
+                    <div class="chart-box"><canvas id="adminBpChart"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-title">体重推移詳細 (DETAILED WEIGHT)</div>
+                    <div class="chart-box"><canvas id="adminWeightChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 患者相談画面モーダル -->
+<div class="chat-modal-overlay" id="chatModal">
+    <div class="phone-frame">
+        <div class="chat-header">
+            <button class="back-btn" onclick="closeChatModal()">＜</button>
+            <div class="chat-title-group">
+                <div class="chat-title-text">薬剤師相談</div>
+                <div class="status-dot">● オンライン</div>
+            </div>
+            <div class="search-icon">🔍</div>
+        </div>
+
+        <div class="chat-body" id="chatBody">
+            <div class="message-row patient">
+                <div class="avatar">🧑‍⚕️</div>
+                <div class="bubble">
+                    担当薬剤師です。お薬の服用や体調について、何か気にかかることがあればいつでもご相談ください。
+                </div>
+            </div>
+        </div>
+
+        <div class="chat-footer">
+            <button class="plus-btn">＋</button>
+            <div class="input-wrapper">
+                <input type="text" id="chatInput" class="chat-input" placeholder="メッセージを入力" onkeypress="handleKeyPress(event)">
+            </div>
+            <button class="send-btn" onclick="sendMessage()">➤</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const rawPatientsData = {{ patients | tojson }};
+    let bpChart, weightChart;
+    let groupedUsers = {};
+    let currentSelectedUid = "0001";
+    let unreadPatients = new Set(); // 未読のある患者IDのリスト
+
+    function setPassword() {
+        const pass1 = document.getElementById('newPassInput').value;
+        const pass2 = document.getElementById('confirmPassInput').value;
+        const errMsg = document.getElementById('setupErrorMsg');
+
+        if (!pass1 || pass1 !== pass2) {
+            errMsg.innerText = "パスワードが一致しません";
+            errMsg.style.display = 'block';
+            return;
+        }
+
+        fetch('/api/pharmacist/set-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: pass1 })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('authOverlay').style.display = 'none';
+                initDashboard();
+            } else {
+                errMsg.innerText = data.message || "エラーが発生しました";
+                errMsg.style.display = 'block';
+            }
+        });
+    }
+
+    function checkPassword() {
+        const pass = document.getElementById('passInput').value;
+        fetch('/api/pharmacist/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: pass })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('authOverlay').style.display = 'none';
+                initDashboard();
+            } else {
+                document.getElementById('loginErrorMsg').style.display = 'block';
+            }
+        });
+    }
+
+    /* パスワード変更モーダル制御関数 */
+    function openChangePasswordModal() {
+        document.getElementById('currentPassChange').value = '';
+        document.getElementById('newPassChange').value = '';
+        document.getElementById('changeErrorMsg').style.display = 'none';
+        document.getElementById('changePasswordOverlay').style.display = 'flex';
+    }
+
+    function closeChangePasswordModal() {
+        document.getElementById('changePasswordOverlay').style.display = 'none';
+    }
+
+    function submitChangePassword() {
+        const currentPass = document.getElementById('currentPassChange').value;
+        const newPass = document.getElementById('newPassChange').value;
+        const errMsg = document.getElementById('changeErrorMsg');
+
+        if (!currentPass || !newPass) {
+            errMsg.innerText = "すべての項目を入力してください";
+            errMsg.style.display = 'block';
+            return;
+        }
+
+        fetch('/api/pharmacist/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                current_password: currentPass,
+                new_password: newPass
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert("パスワードを変更しました");
+                closeChangePasswordModal();
+            } else {
+                errMsg.innerText = data.message || "変更に失敗しました";
+                errMsg.style.display = 'block';
+            }
+        })
+        .catch(err => {
+            errMsg.innerText = "通信エラーが発生しました";
+            errMsg.style.display = 'block';
+        });
+    }
+
+    function initDashboard() {
+        groupedUsers = {};
+        rawPatientsData.forEach(item => {
+            const uid = item.participant_id || "0001";
+            if (!groupedUsers[uid]) {
+                groupedUsers[uid] = [];
+            }
+            groupedUsers[uid].push(item);
+        });
+
+        initCharts();
+        
+        const uids = Object.keys(groupedUsers);
+        if (uids.length > 0) {
+            selectPatient(uids[0]);
+        }
+
+        // 初回未読チェックおよび5秒毎の自動チェック開始
+        checkUnreadStatus();
+        setInterval(checkUnreadStatus, 5000);
+    }
+
+    function renderPatientList() {
+        const container = document.getElementById('patientListContainer');
+        container.innerHTML = '';
+        
+        const uids = Object.keys(groupedUsers);
+        if (uids.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding:10px; font-size:0.8rem; color:#64748b;">データがありません</div>';
+            return;
+        }
+
+        uids.forEach((uid) => {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = `patient-item ${uid === currentSelectedUid ? 'active' : ''}`;
+            itemDiv.onclick = () => {
+                document.querySelectorAll('.patient-item').forEach(el => el.classList.remove('active'));
+                itemDiv.classList.add('active');
+                selectPatient(uid);
+            };
+
+            const isUnread = unreadPatients.has(uid);
+            itemDiv.innerHTML = `
+                <span class="patient-id-text ${isUnread ? 'has-unread' : ''}">ID: ${uid}</span>
+                ${isUnread ? '<span class="unread-badge"></span>' : ''}
+            `;
+            container.appendChild(itemDiv);
+        });
+    }
+
+    function initCharts() {
+        const ctxBp = document.getElementById('adminBpChart').getContext('2d');
+        bpChart = new Chart(ctxBp, {
+            type: 'line',
+            data: { labels: [], datasets: [] },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+                scales: { y: { beginAtZero: false } } 
+            }
+        });
+
+        const ctxWeight = document.getElementById('adminWeightChart').getContext('2d');
+        weightChart = new Chart(ctxWeight, {
+            type: 'line',
+            data: { labels: [], datasets: [] },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { legend: { display: false } },
+                scales: { y: { min: 40, max: 120 } } 
+            }
+        });
+    }
+
+    function selectPatient(uid) {
+        currentSelectedUid = uid;
+        renderPatientList();
+        
+        const userLogs = (groupedUsers[uid] || []).slice().sort((a, b) => (a.id || 0) - (b.id || 0));
+        
+        if (userLogs.length === 0) return;
+
+        const latestBp = [...userLogs].reverse().find(i => i.sys !== null && i.sys !== undefined);
+        const latestWeight = [...userLogs].reverse().find(i => i.weight !== null && i.weight !== undefined);
+
+        document.getElementById('selectedId').innerText = uid;
+        document.getElementById('selectedBp').innerText = latestBp ? `${latestBp.sys} / ${latestBp.dia || '-'}` : '- / -';
+        document.getElementById('selectedPulse').innerText = (latestBp && latestBp.pulse) ? `${latestBp.pulse} bpm` : '- bpm';
+        document.getElementById('selectedWeight').innerText = latestWeight ? `${latestWeight.weight} kg` : '- kg';
+
+        // 相談ボタンの赤点滅スタイル切り替え
+        const chatBtn = document.getElementById('chatOpenBtn');
+        if (unreadPatients.has(uid)) {
+            chatBtn.classList.add('has-unread');
+        } else {
+            chatBtn.classList.remove('has-unread');
+        }
+
+        const formatDate = (dateStr) => {
+            if (!dateStr) return '';
+            const d = new Date(dateStr);
+            return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        };
+
+        const bpRecords = userLogs.filter(i => i.sys !== null && i.sys !== undefined);
+        bpChart.data.labels = bpRecords.map(i => formatDate(i.created_at));
+        bpChart.data.datasets = [
+            { label: '最高血圧', data: bpRecords.map(i => i.sys), borderColor: '#e53e3e', backgroundColor: 'rgba(229, 62, 62, 0.1)', tension: 0.1 },
+            { label: '最低血圧', data: bpRecords.map(i => i.dia), borderColor: '#3182ce', backgroundColor: 'rgba(49, 130, 206, 0.1)', tension: 0.1 },
+            { label: '脈拍', data: bpRecords.map(i => i.pulse), borderColor: '#38a169', borderDash: [5, 5], tension: 0.1 }
+        ];
+        bpChart.update();
+
+        const weightRecords = userLogs.filter(i => i.weight !== null && i.weight !== undefined);
+        weightChart.data.labels = weightRecords.map(i => formatDate(i.created_at));
+        weightChart.data.datasets = [
+            { label: '体重 (kg)', data: weightRecords.map(i => i.weight), borderColor: '#805ad5', backgroundColor: 'rgba(128, 90, 213, 0.1)', tension: 0.1 }
+        ];
+        weightChart.update();
+    }
+
+    /* ---------------------------------------------------- */
+    /* 未読チェック＆チャット制御                             */
+    /* ---------------------------------------------------- */
+    function checkUnreadStatus() {
+        // 未読一覧を取得するAPI呼び出し
+        fetch('/api/messages/unread-status')
+            .then(res => res.json())
+            .then(unreadList => {
+                // unreadList 例: ["0001", "0003"]
+                unreadPatients = new Set(unreadList);
+                renderPatientList();
+                
+                // 現在選択中の患者が未読ならボタンを強調
+                const chatBtn = document.getElementById('chatOpenBtn');
+                if (unreadPatients.has(currentSelectedUid)) {
+                    chatBtn.classList.add('has-unread');
+                } else {
+                    chatBtn.classList.remove('has-unread');
+                }
+            })
+            .catch(err => console.error("未読チェックエラー:", err));
+    }
+
+    function openChatModal() {
+        document.getElementById('chatModal').style.display = 'flex';
+        
+        // チャットを開いたら該当患者の未読フラグを解除
+        unreadPatients.delete(currentSelectedUid);
+        renderPatientList();
+        document.getElementById('chatOpenBtn').classList.remove('has-unread');
+
+        // サーバー側の未読ステータスを既読に更新
+        fetch('/api/messages/mark-as-read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ participant_id: currentSelectedUid })
+        });
+
+        loadMessages();
+    }
+
+    function closeChatModal() {
+        document.getElementById('chatModal').style.display = 'none';
+    }
+
+    function loadMessages() {
+        fetch(`/api/messages?participant_id=${currentSelectedUid}`)
+            .then(res => res.json())
+            .then(messages => {
+                const chatBody = document.getElementById('chatBody');
+                chatBody.innerHTML = `
+                    <div class="message-row patient">
+                        <div class="avatar">🧑‍⚕️</div>
+                        <div class="bubble">
+                            担当薬剤師です。お薬の服用や体調について、何か気にかかることがあればいつでもご相談ください。
+                        </div>
+                    </div>
+                `;
+
+                messages.forEach(msg => {
+                    const row = document.createElement('div');
+                    const isPharmacist = msg.sender === 'pharmacist';
+                    row.className = `message-row ${isPharmacist ? 'pharmacist' : 'patient'}`;
+
+                    row.innerHTML = `
+                        ${!isPharmacist ? '<div class="avatar">👤</div>' : ''}
+                        <div class="bubble">${escapeHtml(msg.content)}</div>
+                    `;
+                    chatBody.appendChild(row);
+                });
+
+                chatBody.scrollTop = chatBody.scrollHeight;
+            })
+            .catch(err => console.error('メッセージ取得エラー:', err));
+    }
+
+    function sendMessage() {
+        const input = document.getElementById('chatInput');
+        const text = input.value.trim();
+        if (!text) return;
+
+        fetch('/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                participant_id: currentSelectedUid,
+                sender: 'pharmacist',
+                content: text
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                input.value = '';
+                loadMessages();
+            }
+        });
+    }
+
+    function handleKeyPress(e) {
+        if (e.key === 'Enter') {
+            sendMessage();
+        }
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>"']/g, m => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[m]);
+    }
+</script>
+
+</body>
+</html>

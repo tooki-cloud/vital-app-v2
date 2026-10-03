@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ダッシュボード</title>
+    <!-- Chart.js 読み込み -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: #f0f2f5; display: flex; justify-content: center; padding: 20px 10px; }
+
+        .phone-frame {
+            width: 375px;
+            background: #ffffff;
+            border: 2px solid #2d3748;
+            border-radius: 36px;
+            padding: 20px 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            position: relative;
+        }
+
+        /* ヘッダー */
+        .header { display: flex; justify-content: space-between; align-items: center; }
+        .header-title { font-size: 1.1rem; font-weight: bold; color: #2d3748; }
+        .id-badge { background: #edf2f7; color: #4a5568; font-size: 0.75rem; padding: 4px 8px; border-radius: 12px; font-weight: bold; }
+
+        /* カードデザイン */
+        .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 12px 16px; }
+        .card-title { font-size: 0.85rem; font-weight: bold; color: #718096; margin-bottom: 8px; }
+
+        /* 最新数値表示 (3列) */
+        .vital-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+        .vital-box { background: #ffffff; border-radius: 12px; padding: 8px 6px; border: 1px solid #edf2f7; text-align: center; }
+        .vital-label { font-size: 0.65rem; color: #a0aec0; font-weight: bold; white-space: nowrap; }
+        .vital-value { font-size: 1.1rem; font-weight: bold; color: #2d3748; }
+        .vital-unit { font-size: 0.65rem; color: #718096; font-weight: normal; }
+
+        /* 横スクロール枠 (水平バーを常に操作可能に) */
+        .chart-scroll-wrapper {
+            width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            margin-top: 4px;
+            padding-bottom: 4px; /* スクロールバーとの余白 */
+            scrollbar-width: thin; /* Firefox用 */
+        }
+
+        /* グラフエリアの内部枠 */
+        .chart-inner-container {
+            position: relative;
+            height: 160px;
+        }
+        .chart-inner-container-large {
+            position: relative;
+            height: 230px;
+        }
+
+        /* ナビゲーションボタン */
+        .nav-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: auto; }
+        .nav-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 14px;
+            background: #2d3748;
+            color: #ffffff;
+            border: none;
+            border-radius: 16px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 0.85rem;
+            cursor: pointer;
+            gap: 4px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        .nav-btn-icon { font-size: 1.2rem; }
+
+        /* 初回利用モーダル */
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255, 255, 255, 0.96);
+            border-radius: 36px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 24px;
+            text-align: center;
+            z-index: 100;
+        }
+        .overlay-title { font-size: 1.2rem; font-weight: bold; color: #2d3748; margin-bottom: 12px; }
+        .overlay-desc { font-size: 0.85rem; color: #4a5568; margin-bottom: 24px; line-height: 1.5; }
+        .start-btn {
+            width: 100%;
+            padding: 14px;
+            background: #3182ce;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<div class="phone-frame">
+    <!-- 初回起動モーダル -->
+    <div id="start-overlay" class="overlay" style="display: none;">
+        <div class="overlay-title">ようこそ</div>
+        <div class="overlay-desc">健康記録アプリを始めるために<br>研究者IDを発行してください。</div>
+        <button id="start-btn" class="start-btn" onclick="issueParticipantId()">使用を開始する</button>
+    </div>
+
+    <!-- ヘッダー -->
+    <div class="header">
+        <span class="header-title">ダッシュボード</span>
+        <span class="id-badge">ID: <span id="researcher-id">----</span></span>
+    </div>
+
+    <!-- 最新バイタルデータ表示 -->
+    <div class="card">
+        <div class="card-title">最新の記録</div>
+        <div class="vital-grid">
+            <div class="vital-box">
+                <div class="vital-label">最高/最低血圧</div>
+                <div class="vital-value" id="latest-bp">-- / --</div>
+                <div class="vital-unit">mmHg</div>
+            </div>
+            <div class="vital-box">
+                <div class="vital-label">脈拍</div>
+                <div class="vital-value" id="latest-pulse">--</div>
+                <div class="vital-unit">bpm</div>
+            </div>
+            <div class="vital-box">
+                <div class="vital-label">体重</div>
+                <div class="vital-value" id="latest-weight">--</div>
+                <div class="vital-unit">kg</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 血圧推移グラフ -->
+    <div class="card">
+        <div class="card-title">血圧・脈拍推移</div>
+        <div class="chart-scroll-wrapper" id="bpScrollWrapper">
+            <div class="chart-inner-container-large" id="bpInnerContainer">
+                <canvas id="bpChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- 体重推移グラフ -->
+    <div class="card">
+        <div class="card-title">体重推移</div>
+        <div class="chart-scroll-wrapper" id="weightScrollWrapper">
+            <div class="chart-inner-container" id="weightInnerContainer">
+                <canvas id="weightChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- 画面遷移ボタン -->
+    <div class="nav-buttons">
+        <button class="nav-btn" onclick="navigateWithLog('/measure', '測定画面へ移動')">
+            <span class="nav-btn-icon">📷</span>
+            <span>測定・記録</span>
+        </button>
+        <button class="nav-btn" onclick="navigateWithLog('/chat', 'チャット画面へ移動')">
+            <span class="nav-btn-icon">💬</span>
+            <span>相談チャット</span>
+        </button>
+    </div>
+</div>
+
+<!-- 外部スクリプトの読み込み -->
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+
+<script>
+    let rawVitals = {{ vitals | tojson | safe }};
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        const participantId = localStorage.getItem('participant_id') || '0001';
+        
+        if (!rawVitals || rawVitals.length === 0) {
+            try {
+                const res = await fetch(`https://mjlqzhjuarsqivnieakj.supabase.co/rest/v1/vitals?participant_id=eq.${participantId}&select=*&order=created_at.asc`, {
+                    headers: {
+                        'apikey': 'sb_publishable_nd2Ma1EqO5H8kTzreLhLcg_2FDup1Zt',
+                        'Authorization': 'Bearer sb_publishable_nd2Ma1EqO5H8kTzreLhLcg_2FDup1Zt'
+                    }
+                });
+                if (res.ok) {
+                    rawVitals = await res.json();
+                }
+            } catch (e) {
+                console.error("データ取得エラー:", e);
+            }
+        }
+
+        if (rawVitals && rawVitals.length > 0) {
+            updateLatestVitals(rawVitals);
+            renderCharts(rawVitals);
+        }
+    });
+
+    function updateLatestVitals(data) {
+        // 最新の血圧・脈拍
+        const latestBp = [...data].reverse().find(item => item.sys !== null && item.sys !== undefined);
+        if (latestBp) {
+            document.getElementById('latest-bp').innerText = `${latestBp.sys} / ${latestBp.dia || '--'}`;
+            document.getElementById('latest-pulse').innerText = latestBp.pulse || '--';
+        }
+
+        // 最新の体重
+        const latestWeight = [...data].reverse().find(item => item.weight !== null && item.weight !== undefined);
+        if (latestWeight) {
+            document.getElementById('latest-weight').innerText = latestWeight.weight;
+        }
+    }
+
+    // 時刻フォーマット補助関数
+    function formatDateLabel(dateStr) {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        const month = d.getMonth() + 1;
+        const date = d.getDate();
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return `${month}/${date} ${hours}:${minutes}`;
+    }
+
+    function renderCharts(data) {
+        // 1. 血圧データ抽出
+        const bpRecords = data.filter(item => item.sys !== null && item.sys !== undefined);
+        const bpLabels = bpRecords.map(item => formatDateLabel(item.created_at));
+        const sysData = bpRecords.map(item => item.sys);
+        const diaData = bpRecords.map(item => item.dia);
+        const pulseData = bpRecords.map(item => item.pulse);
+
+        // 2. 体重データ抽出
+        const weightRecords = data.filter(item => item.weight !== null && item.weight !== undefined);
+        const weightLabels = weightRecords.map(item => formatDateLabel(item.created_at));
+        const weightData = weightRecords.map(item => item.weight);
+
+        // --- 動的な幅計算 (データが詰まらないように1件あたり45px確保) ---
+        const pxPerItem = 45; // 1項目あたりの幅
+        const minWidth = 310; // カード内最小幅
+
+        // 血圧グラフの幅決定 (10件以上ある場合やデータ数に応じて伸ばす)
+        const bpWidth = Math.max(minWidth, bpRecords.length * pxPerItem);
+        const bpInner = document.getElementById('bpInnerContainer');
+        bpInner.style.width = bpWidth + 'px';
+
+        // 体重グラフの幅決定
+        const weightWidth = Math.max(minWidth, weightRecords.length * pxPerItem);
+        const weightInner = document.getElementById('weightInnerContainer');
+        weightInner.style.width = weightWidth + 'px';
+
+        // --- 血圧グラフ ---
+        const bpCtx = document.getElementById('bpChart');
+        if (bpCtx) {
+            new Chart(bpCtx, {
+                type: 'line',
+                data: {
+                    labels: bpLabels,
+                    datasets: [
+                        { label: '最高血圧', data: sysData, borderColor: '#e53e3e', backgroundColor: 'rgba(229, 62, 62, 0.1)' },
+                        { label: '最低血圧', data: diaData, borderColor: '#3182ce', backgroundColor: 'rgba(49, 130, 206, 0.1)' },
+                        { label: '脈拍', data: pulseData, borderColor: '#38a169', borderDash: [5, 5] }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 9 } } } },
+                    scales: { 
+                        y: { 
+                            beginAtZero: false,
+                            ticks: {
+                                stepSize: 40
+                            }
+                        } 
+                    }
+                }
+            });
+
+            // 最新データが見えるように自動的に右端までスクロール
+            setTimeout(() => {
+                const bpWrapper = document.getElementById('bpScrollWrapper');
+                if (bpWrapper) bpWrapper.scrollLeft = bpWrapper.scrollWidth;
+            }, 50);
+        }
+
+        // --- 体重グラフ ---
+        const weightCtx = document.getElementById('weightChart');
+        if (weightCtx) {
+            new Chart(weightCtx, {
+                type: 'line',
+                data: {
+                    labels: weightLabels,
+                    datasets: [{ label: '体重 (kg)', data: weightData, borderColor: '#805ad5', backgroundColor: 'rgba(128, 90, 213, 0.1)' }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: {
+                            min: 40,
+                            max: 120
+                        }
+                    }
+                }
+            });
+
+            // 最新データが見えるように自動的に右端までスクロール
+            setTimeout(() => {
+                const weightWrapper = document.getElementById('weightScrollWrapper');
+                if (weightWrapper) weightWrapper.scrollLeft = weightWrapper.scrollWidth;
+            }, 50);
+        }
+    }
+</script>
+
+</body>
+</html>

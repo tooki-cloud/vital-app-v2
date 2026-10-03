@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>カメラビュー</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: #f0f2f5; display: flex; justify-content: center; padding: 20px 10px; min-height: 100vh; }
+        
+        .phone-frame {
+            width: 375px;
+            background: #ffffff;
+            border: 2px solid #2d3748;
+            border-radius: 36px;
+            padding: 24px 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* ヘッダー */
+        .header { display: flex; justify-content: space-between; align-items: center; padding: 0 4px; }
+        .header-icon { font-size: 1.2rem; color: #4a5568; text-decoration: none; cursor: pointer; font-weight: bold; }
+        .header-title { font-size: 1.15rem; font-weight: bold; color: #2d3748; }
+
+        /* モード選択タブ */
+        .mode-selector {
+            display: flex;
+            background: #edf2f7;
+            padding: 4px;
+            border-radius: 12px;
+            gap: 4px;
+        }
+        .mode-tab {
+            flex: 1;
+            padding: 10px 0;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: #4a5568;
+            background: transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .mode-tab.active {
+            background: #ffffff;
+            color: #2d3748;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+
+        /* カメラ表示領域 */
+        .camera-container {
+            position: relative;
+            width: 100%;
+            height: 210px;
+            background: #111115;
+            border-radius: 16px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        video, img#photo { width: 100%; height: 100%; object-fit: cover; }
+        .guide-box {
+            position: absolute;
+            border: 1.5px dashed #ffffff;
+            border-radius: 8px;
+            padding: 8px 16px;
+            color: white;
+            font-size: 0.8rem;
+            letter-spacing: 0.5px;
+            background: rgba(0,0,0,0.25);
+            pointer-events: none;
+            text-align: center;
+        }
+
+        /* ボタンデザイン */
+        .btn {
+            width: 100%;
+            padding: 13px;
+            border-radius: 20px;
+            border: none;
+            font-weight: bold;
+            font-size: 0.95rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .btn-primary { background: #3b4252; color: white; }
+        .btn-primary:disabled { background: #a0aec0; cursor: not-allowed; }
+        .btn-secondary { background: #e2e8f0; color: #2d3748; }
+
+        /* フォーム入力領域 */
+        .form-container { display: flex; flex-direction: column; gap: 4px; }
+        .form-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #edf2f7;
+        }
+        .form-label { display: flex; flex-direction: column; }
+        .label-ja { font-size: 0.9rem; font-weight: bold; color: #2d3748; }
+        .label-en { font-size: 0.65rem; color: #a0aec0; }
+        .form-input {
+            width: 100px;
+            padding: 8px;
+            text-align: center;
+            border: 1px solid #cbd5e0;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            outline: none;
+        }
+        .form-input:focus { border-color: #3b4252; }
+    </style>
+</head>
+<body>
+
+<div class="phone-frame">
+    <div class="header">
+        <a href="javascript:void(0)" onclick="navigateWithLog('/', '測定画面から戻る')" class="header-icon">＜</a>
+        <span class="header-title">カメラビュー</span>
+        <span style="font-size: 1.1rem; color: #4a5568;">📷</span>
+    </div>
+
+    <!-- モード選択タブ -->
+    <div class="mode-selector">
+        <button id="tabBp" class="mode-tab active" onclick="switchMode('bp')">血圧を測定</button>
+        <button id="tabWeight" class="mode-tab" onclick="switchMode('weight')">体重を測定</button>
+    </div>
+
+    <!-- カメラ画面エリア -->
+    <div class="camera-container">
+        <video id="video" autoplay playsinline muted></video>
+        <img id="photo" style="display: none;" alt="キャプチャ画像" />
+        <div class="guide-box" id="guideBox">[ 枠内に収めて撮影 ]</div>
+    </div>
+    <canvas id="canvas" style="display: none;"></canvas>
+
+    <!-- 撮影・再撮影ボタン -->
+    <button id="captureBtn" class="btn btn-primary" onclick="takeSnapshot()">📷 撮影する</button>
+    <button id="retakeBtn" class="btn btn-secondary" onclick="restartCamera()" style="display: none;">再撮影する</button>
+
+    <!-- フォーム入力領域 -->
+    <div class="form-container">
+        <!-- 血圧項目 -->
+        <div class="form-group bp-item">
+            <div class="form-label">
+                <span class="label-ja">最高血圧</span>
+                <span class="label-en">(SYSTOLIC)</span>
+            </div>
+            <input type="number" id="sys" class="form-input" placeholder="---" step="1">
+        </div>
+        <div class="form-group bp-item">
+            <div class="form-label">
+                <span class="label-ja">最低血圧</span>
+                <span class="label-en">(DIASTOLIC)</span>
+            </div>
+            <input type="number" id="dia" class="form-input" placeholder="---" step="1">
+        </div>
+        <div class="form-group bp-item">
+            <div class="form-label">
+                <span class="label-ja">脈拍</span>
+                <span class="label-en">(PULSE)</span>
+            </div>
+            <input type="number" id="pulse" class="form-input" placeholder="---" step="1">
+        </div>
+
+        <!-- 体重項目 -->
+        <div class="form-group weight-item" style="display: none;">
+            <div class="form-label">
+                <span class="label-ja">体重</span>
+                <span class="label-en">(WEIGHT)</span>
+            </div>
+            <input type="number" step="0.1" id="weight" class="form-input" placeholder="---">
+        </div>
+    </div>
+
+    <button id="saveBtn" class="btn btn-primary" onclick="saveData()">保存</button>
+</div>
+
+<script>
+    // URLまたはローカルストレージから participant_id を取得
+    const urlParams = new URLSearchParams(window.location.search);
+    const participantId = urlParams.get('participant_id') || localStorage.getItem('participant_id') || '0001';
+
+    let currentMode = 'bp';
+    let videoStream = null;
+
+    const video = document.getElementById('video');
+    const photo = document.getElementById('photo');
+    const canvas = document.getElementById('canvas');
+    const guideBox = document.getElementById('guideBox');
+
+    // ログ送信関数
+    async function sendLog(actionDetail) {
+        if (!participantId) return;
+        try {
+            await fetch('/api/log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ participant_id: participantId, log: actionDetail })
+            });
+        } catch (e) {
+            console.error('ログ送信エラー:', e);
+        }
+    }
+
+    async function navigateWithLog(url, actionName) {
+        await sendLog(`ボタンタップ: ${actionName}`);
+        const targetUrl = participantId ? `${url}?participant_id=${encodeURIComponent(participantId)}` : url;
+        window.location.href = targetUrl;
+    }
+
+    // 画面ロード時の初期化
+    window.addEventListener('DOMContentLoaded', () => {
+        localStorage.setItem('participant_id', participantId);
+        sendLog('カメラ測定画面を表示');
+        initCamera();
+    });
+
+    // カメラ起動
+    function initCamera() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            guideBox.innerText = "カメラがサポートされていません";
+            return;
+        }
+
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+            .then(stream => {
+                videoStream = stream;
+                video.srcObject = stream;
+            })
+            .catch(err => {
+                console.error("カメラ起動エラー:", err);
+                guideBox.innerText = "カメラを起動できません";
+            });
+    }
+
+    // タブ切り替え（血圧 / 体重）
+    function switchMode(mode) {
+        currentMode = mode;
+        const isBp = mode === 'bp';
+
+        document.getElementById('tabBp').classList.toggle('active', isBp);
+        document.getElementById('tabWeight').classList.toggle('active', !isBp);
+
+        document.querySelectorAll('.bp-item').forEach(el => el.style.display = isBp ? 'flex' : 'none');
+        document.querySelectorAll('.weight-item').forEach(el => el.style.display = isBp ? 'none' : 'flex');
+        
+        sendLog(`測定モード変更: ${mode}`);
+    }
+
+    // 撮影＆AI解析実行（撮影画像をモデルに送り数値を自動セット）
+    function takeSnapshot() {
+        if (!video.videoWidth) {
+            alert("カメラが準備できていません");
+            return;
+        }
+
+        sendLog(`撮影実行 (モード: ${currentMode})`);
+
+        // Canvas描画
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+
+        // プレビュー表示
+        photo.src = canvas.toDataURL('image/png');
+        video.style.display = 'none';
+        photo.style.display = 'block';
+
+        guideBox.style.display = 'block';
+        guideBox.innerText = "AI画像解析中...";
+
+        document.getElementById('captureBtn').style.display = 'none';
+        document.getElementById('retakeBtn').style.display = 'block';
+
+        // BlobとしてAIバックエンド（App.py）へ画像送信
+        canvas.toBlob(async (blob) => {
+            if (!blob) return;
+
+            const formData = new FormData();
+            formData.append('image', blob, 'capture.png');
+            formData.append('mode', currentMode);
+            formData.append('participant_id', participantId);
+
+            try {
+                const response = await fetch('/api/predict-vital', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success && result.data) {
+                    const data = result.data;
+                    if (currentMode === 'bp') {
+                        if (data.sys) document.getElementById('sys').value = data.sys;
+                        if (data.dia) document.getElementById('dia').value = data.dia;
+                        if (data.pulse) document.getElementById('pulse').value = data.pulse;
+                    } else {
+                        if (data.weight) document.getElementById('weight').value = data.weight;
+                    }
+                    guideBox.innerText = "解析＆自動保存完了！";
+                } else {
+                    guideBox.innerText = "解析失敗（手動で入力してください）";
+                }
+            } catch (err) {
+                console.error("解析APIエラー:", err);
+                guideBox.innerText = "通信エラー";
+            }
+        }, 'image/png');
+    }
+
+    // 再撮影
+    function restartCamera() {
+        video.style.display = 'block';
+        photo.style.display = 'none';
+        guideBox.style.display = 'block';
+        guideBox.innerText = "[ 枠内に収めて撮影 ]";
+        document.getElementById('captureBtn').style.display = 'flex';
+        document.getElementById('retakeBtn').style.display = 'none';
+        sendLog('再撮影を実行');
+    }
+
+    // 手動入力値の保存処理
+    async function saveData() {
+        const payload = { participant_id: participantId };
+
+        if (currentMode === 'bp') {
+            const sys = document.getElementById('sys').value;
+            const dia = document.getElementById('dia').value;
+            const pulse = document.getElementById('pulse').value;
+
+            if (!sys && !dia && !pulse) {
+                return alert("血圧または脈拍の数値を入力してください");
+            }
+
+            if (sys) payload.sys = Number(sys);
+            if (dia) payload.dia = Number(dia);
+            if (pulse) payload.pulse = Number(pulse);
+        } else {
+            const weight = document.getElementById('weight').value;
+            if (!weight) return alert("体重を入力してください");
+
+            payload.weight = Number(weight);
+        }
+
+        const saveBtn = document.getElementById('saveBtn');
+        saveBtn.disabled = true;
+        saveBtn.innerText = "保存中...";
+
+        try {
+            const res = await fetch('/api/vitals', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const resData = await res.json();
+
+            if (resData.success) {
+                await sendLog(`バイタル手動保存完了 (モード: ${currentMode})`);
+                alert("記録を保存しました！");
+                window.location.href = `/?participant_id=${encodeURIComponent(participantId)}`;
+            } else {
+                alert("保存エラー: " + (resData.error || "送信に失敗しました"));
+                saveBtn.disabled = false;
+                saveBtn.innerText = "保存";
+            }
+        } catch (err) {
+            console.error("保存失敗:", err);
+            alert("通信エラーが発生しました。");
+            saveBtn.disabled = false;
+            saveBtn.innerText = "保存";
+        }
+    }
+</script>
+
+</body>
+</html>

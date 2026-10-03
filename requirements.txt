@@ -1,0 +1,13 @@
+flask 
+gunicorn 
+supabase 
+pytesseract 
+pillow 
+opencv-python-headless
+flask
+ultralytics
+opencv-python-headless
+easyocr
+torch
+torchvision
+numpy

@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>薬剤師相談</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: #f0f2f5; display: flex; justify-content: center; padding: 20px 10px; }
+        
+        .phone-frame {
+            width: 375px;
+            height: 667px;
+            background: #ffffff;
+            border: 2px solid #2d3748;
+            border-radius: 36px;
+            padding: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ヘッダー */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .header-icon { font-size: 1.2rem; color: #4a5568; text-decoration: none; cursor: pointer; }
+        .header-title-container { text-align: center; }
+        .header-title { font-size: 1rem; font-weight: bold; color: #2d3748; }
+        .header-status { font-size: 0.65rem; color: #38a169; font-weight: bold; }
+        .header-actions { display: flex; gap: 12px; font-size: 1.1rem; color: #4a5568; }
+
+        /* チャット表示エリア */
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        /* メッセージ共通 */
+        .message-row {
+            display: flex;
+            gap: 8px;
+            max-width: 85%;
+        }
+        .message-row.pharmacist {
+            align-self: flex-start;
+        }
+        .message-row.user {
+            align-self: flex-end;
+            flex-direction: row-reverse;
+        }
+
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 1px solid #a0aec0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            background: #edf2f7;
+            flex-shrink: 0;
+        }
+
+        .bubble {
+            padding: 10px 12px;
+            border-radius: 16px;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            word-break: break-word;
+        }
+        .pharmacist .bubble {
+            background: #f1f5f9;
+            color: #2d3748;
+            border: 1px solid #cbd5e0;
+            border-top-left-radius: 4px;
+        }
+        .user .bubble {
+            background: #5a6578;
+            color: #ffffff;
+            border-top-right-radius: 4px;
+        }
+
+        /* フッター入力エリア */
+        .input-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #e2e8f0;
+        }
+        .input-icon { font-size: 1.2rem; color: #718096; cursor: pointer; }
+        .chat-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #cbd5e0;
+            border-radius: 20px;
+            outline: none;
+            font-size: 0.85rem;
+        }
+        .send-btn {
+            background: #2d3748;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .send-btn:disabled {
+            background: #a0aec0;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+
+<div class="phone-frame">
+    <!-- ヘッダー -->
+    <div class="header">
+        <a href="javascript:void(0)" onclick="navigateWithLog('/', 'チャット画面から戻る')" class="header-icon">＜</a>
+        <div class="header-title-container">
+            <div class="header-title">薬剤師相談</div>
+            <div class="header-status">● オンライン</div>
+        </div>
+        <div class="header-actions">
+            <span>🔍</span>
+        </div>
+    </div>
+
+    <!-- チャットメッセージエリア -->
+    <div class="chat-container" id="chatContainer">
+        <!-- 初期メッセージ -->
+        <div class="message-row pharmacist">
+            <div class="avatar">👩‍⚕️</div>
+            <div class="bubble">
+                担当薬剤師です。お薬の服用や体調について、何か気にかかることがあればいつでもご相談ください。
+            </div>
+        </div>
+        <!-- 動的に読み込まれるメッセージがここに追加されます -->
+    </div>
+
+    <!-- 入力エリア -->
+    <div class="input-container">
+        <span class="input-icon">＋</span>
+        <input type="text" class="chat-input" id="messageInput" placeholder="メッセージを入力" onkeypress="handleKeyPress(event)">
+        <button class="send-btn" id="sendBtn" onclick="sendMessage()">➤</button>
+    </div>
+</div>
+
+<script>
+    const participantId = localStorage.getItem('participant_id') || '0001';
+
+    // 共通ログ送信関数
+    async function sendLog(actionDetail) {
+        if (!participantId) return;
+        try {
+            await fetch('/api/log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ participant_id: participantId, log: actionDetail })
+            });
+        } catch (e) {
+            console.error('ログ送信エラー:', e);
+        }
+    }
+
+    async function navigateWithLog(url, actionName) {
+        await sendLog(`ボタンタップ: ${actionName}`);
+        window.location.href = url;
+    }
+
+    // 初回ロード時処理
+    window.addEventListener('DOMContentLoaded', () => {
+        sendLog('チャット画面を表示');
+        loadChatHistory();
+    });
+
+    // 過去のチャット履歴を取得して画面に描画
+    async function loadChatHistory() {
+        try {
+            const res = await fetch(`/api/chat/history?participant_id=${participantId}`);
+            const data = await res.json();
+
+            if (data.success && data.messages) {
+                const chatContainer = document.getElementById('chatContainer');
+                
+                data.messages.forEach(msg => {
+                    const isUser = msg.sender === 'user';
+                    const row = document.createElement('div');
+                    row.className = `message-row ${isUser ? 'user' : 'pharmacist'}`;
+
+                    if (isUser) {
+                        row.innerHTML = `<div class="bubble">${escapeHtml(msg.content)}</div>`;
+                    } else {
+                        row.innerHTML = `
+                            <div class="avatar">👩‍⚕️</div>
+                            <div class="bubble">${escapeHtml(msg.content)}</div>
+                        `;
+                    }
+                    chatContainer.appendChild(row);
+                });
+
+                scrollToBottom();
+            }
+        } catch (e) {
+            console.error('履歴取得失敗:', e);
+        }
+    }
+
+    // メッセージ送信処理
+    async function sendMessage() {
+        const input = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const text = input.value.trim();
+
+        if (!text) return;
+
+        const chatContainer = document.getElementById('chatContainer');
+
+        // UI制御（二重送信防止）
+        input.value = '';
+        input.disabled = true;
+        sendBtn.disabled = true;
+
+        // ユーザーの発言を即座に描画
+        const userRow = document.createElement('div');
+        userRow.className = 'message-row user';
+        userRow.innerHTML = `<div class="bubble">${escapeHtml(text)}</div>`;
+        chatContainer.appendChild(userRow);
+        scrollToBottom();
+
+        try {
+            // Backend APIへメッセージ送信
+            const response = await fetch('/api/chat/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    participant_id: participantId,
+                    message: text,
+                    sender: 'user'
+                })
+            });
+
+            const data = await response.json();
+
+            if (!data.success) {
+                alert("送信エラー: " + (data.error || "メッセージの送信に失敗しました"));
+            }
+        } catch (error) {
+            console.error('メッセージ送信エラー:', error);
+            alert("通信エラーが発生しました。");
+        } finally {
+            input.disabled = false;
+            sendBtn.disabled = false;
+            input.focus();
+        }
+    }
+
+    function handleKeyPress(e) {
+        if (e.key === 'Enter') {
+            sendMessage();
+        }
+    }
+
+    function scrollToBottom() {
+        const chatContainer = document.getElementById('chatContainer');
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>"']/g, function(m) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+        });
+    }
+</script>
+
+</body>
+</html>
