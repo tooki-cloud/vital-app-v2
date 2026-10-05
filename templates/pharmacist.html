@@ -117,7 +117,20 @@
         .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-width: 0; }
         .chart-card { background: #ffffff; border-radius: 12px; padding: 14px; min-width: 0; }
         .chart-title { font-size: 0.85rem; font-weight: bold; margin-bottom: 8px; color: #334155; }
-        .chart-box { height: 380px; position: relative; width: 100%; }
+        
+        /* 横スクロール対応用のスタイル */
+        .chart-scroll-wrapper {
+            width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: thin;
+            padding-bottom: 6px;
+        }
+        .chart-inner-container {
+            position: relative;
+            height: 380px;
+            min-width: 100%;
+        }
 
         /* 患者相談画面（モーダル） */
         .chat-modal-overlay {
@@ -263,15 +276,23 @@
                 </button>
             </div>
 
-            <!-- グラフエリア -->
+            <!-- グラフエリア (横スクロール対応) -->
             <div class="charts-grid">
                 <div class="chart-card">
                     <div class="chart-title">血圧・脈拍推移詳細 (DETAILED BP & PULSE)</div>
-                    <div class="chart-box"><canvas id="adminBpChart"></canvas></div>
+                    <div class="chart-scroll-wrapper" id="bpScrollWrapper">
+                        <div class="chart-inner-container" id="bpInnerContainer">
+                            <canvas id="adminBpChart"></canvas>
+                        </div>
+                    </div>
                 </div>
                 <div class="chart-card">
                     <div class="chart-title">体重推移詳細 (DETAILED WEIGHT)</div>
-                    <div class="chart-box"><canvas id="adminWeightChart"></canvas></div>
+                    <div class="chart-scroll-wrapper" id="weightScrollWrapper">
+                        <div class="chart-inner-container" id="weightInnerContainer">
+                            <canvas id="adminWeightChart"></canvas>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -522,14 +543,30 @@
             { label: '最低血圧', data: bpRecords.map(i => i.dia), borderColor: '#3182ce', backgroundColor: 'rgba(49, 130, 206, 0.1)', tension: 0.1 },
             { label: '脈拍', data: bpRecords.map(i => i.pulse), borderColor: '#38a169', borderDash: [5, 5], tension: 0.1 }
         ];
+
+        // データ件数に応じて血圧グラフ幅を設定 (1データあたり60px、最低400px)
+        const bpInner = document.getElementById('bpInnerContainer');
+        const bpWrapper = document.getElementById('bpScrollWrapper');
+        const minBpWidth = Math.max(400, bpRecords.length * 60);
+        bpInner.style.width = minBpWidth + 'px';
+
         bpChart.update();
+        if (bpWrapper) bpWrapper.scrollLeft = bpWrapper.scrollWidth;
 
         const weightRecords = userLogs.filter(i => i.weight !== null && i.weight !== undefined);
         weightChart.data.labels = weightRecords.map(i => formatDate(i.created_at));
         weightChart.data.datasets = [
             { label: '体重 (kg)', data: weightRecords.map(i => i.weight), borderColor: '#805ad5', backgroundColor: 'rgba(128, 90, 213, 0.1)', tension: 0.1 }
         ];
+
+        // データ件数に応じて体重グラフ幅を設定 (1データあたり60px、最低400px)
+        const weightInner = document.getElementById('weightInnerContainer');
+        const weightWrapper = document.getElementById('weightScrollWrapper');
+        const minWeightWidth = Math.max(400, weightRecords.length * 60);
+        weightInner.style.width = minWeightWidth + 'px';
+
         weightChart.update();
+        if (weightWrapper) weightWrapper.scrollLeft = weightWrapper.scrollWidth;
     }
 
     /* ---------------------------------------------------- */
