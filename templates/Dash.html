@@ -60,7 +60,7 @@
         }
 
         /* ナビゲーションボタン */
-        .nav-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: auto; }
+        .nav-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .nav-btn {
             display: flex;
             flex-direction: column;
@@ -147,6 +147,18 @@
         </div>
     </div>
 
+    <!-- 画面遷移ボタン（最新の記録と血圧推移の間へ移動） -->
+    <div class="nav-buttons">
+        <button class="nav-btn" onclick="navigateWithLog('/measure', '測定画面へ移動')">
+            <span class="nav-btn-icon">📷</span>
+            <span>測定・記録</span>
+        </button>
+        <button class="nav-btn" onclick="navigateWithLog('/chat', 'チャット画面へ移動')">
+            <span class="nav-btn-icon">💬</span>
+            <span>相談チャット</span>
+        </button>
+    </div>
+
     <!-- 血圧推移グラフ -->
     <div class="card">
         <div class="card-title">血圧・脈拍推移</div>
@@ -165,18 +177,6 @@
                 <canvas id="weightChart"></canvas>
             </div>
         </div>
-    </div>
-
-    <!-- 画面遷移ボタン -->
-    <div class="nav-buttons">
-        <button class="nav-btn" onclick="navigateWithLog('/measure', '測定画面へ移動')">
-            <span class="nav-btn-icon">📷</span>
-            <span>測定・記録</span>
-        </button>
-        <button class="nav-btn" onclick="navigateWithLog('/chat', 'チャット画面へ移動')">
-            <span class="nav-btn-icon">💬</span>
-            <span>相談チャット</span>
-        </button>
     </div>
 </div>
 
