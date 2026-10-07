@@ -11,3 +11,4 @@ easyocr
 torch
 torchvision
 numpy
+google-cloud-vision
