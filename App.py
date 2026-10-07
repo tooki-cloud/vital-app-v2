@@ -1,31 +1,18 @@
 import os
 import io
+import re
 from flask import Flask, render_template, request, jsonify
 from supabase import create_client, Client
 from PIL import Image
 
-# Ultralytics YOLO の読み込み（起動時に1回だけロード）
+# Google Cloud Vision API のインポート
 try:
-    from ultralytics import YOLO
-    
-    MODEL_PATH = "精度向上/yolov8n.pt"  # 学習済みのモデルパス
-    
-    if os.path.exists(MODEL_PATH):
-        model = YOLO(MODEL_PATH)
-        # 【追加】起動時のウォームアップ（初回推論をあらかじめ行っておくことで本番リクエストを高速化）
-        try:
-            import numpy as np
-            dummy_img = Image.fromarray(np.zeros((100, 100, 3), dtype=np.uint8))
-            model(dummy_img)
-            print("YOLOモデルのウォームアップが完了しました。")
-        except Exception as e:
-            print(f"ウォームアップ中に軽微なエラー: {e}")
-    else:
-        model = None
-        print(f"Warning: YOLOモデルファイル ({MODEL_PATH}) が見つかりません。")
+    from google.cloud import vision
+    HAS_VISION_API = True
+    print("Google Cloud Vision APIライブラリの読み込みが完了しました。")
 except ImportError:
-    model = None
-    print("Warning: ultralytics パッケージがインストールされていません。")
+    HAS_VISION_API = False
+    print("Warning: google-cloud-vision がインストールされていません。")
 
 app = Flask(__name__)
 
@@ -83,8 +70,8 @@ def pharmacist_dashboard():
 
 # --- API エンドポイント ---
 
-# 画像解析・数値検出 & Supabase保存 API（JavaScript側の /api/ocr-upload に合わせるように修正）
-@app.route('/api/ocr-upload', methods=['POST'])
+# 画像解析・数値検出 API（Google Cloud Vision API 連携）
+@app.route('/api/predict-vital', methods=['POST'])
 def predict_and_save_vital():
     if 'image' not in request.files:
         return jsonify({'success': False, 'error': '画像ファイルが送信されていません'}), 400
@@ -98,18 +85,87 @@ def predict_and_save_vital():
         image = Image.open(io.BytesIO(image_bytes))
 
         sys_val, dia_val, pulse_val, weight_val = None, None, None, None
+        extracted_text = ""
 
-        if model is not None:
-            results = model(image)
-            if mode == 'bp':
-                sys_val, dia_val, pulse_val = 120, 80, 72
+        # 画像をバイト列に変換してVision APIへ渡す準備
+        img_byte_arr = io.BytesIO()
+        image.save(img_byte_arr, format=image.format if image.format else 'JPEG')
+        image_bytes_data = img_byte_arr.getvalue()
+
+        # Google Cloud Vision API による高精度な文字検出
+        if HAS_VISION_API:
+            try:
+                # ※ "あなたのAPIキーをここに貼り付け" の部分にご自身のGoogle Cloud Vision APIキーを設定してください
+                client = vision.ImageAnnotatorClient(client_options={"api_key":"AIzaSyBpHLQIsovNC_8OeddAkyi9A9B9hlZvrZE"})
+                
+                image_obj = vision.Image(content=image_bytes_data)
+                response = client.text_detection(image=image_obj)
+                texts = response.text_annotations
+
+                if texts:
+                    extracted_text = texts[0].description
+                    print(f"Vision API 抽出テキスト:\n{extracted_text}")
+                
+                if response.error.message:
+                    print(f"Vision API エラー: {response.error.message}")
+
+            except Exception as vision_err:
+                print(f"Vision API 処理エラー: {vision_err}")
+
+        if mode == 'bp':
+            measured_numbers = []
+            if HAS_VISION_API and response and response.text_annotations and len(response.text_annotations) > 1:
+                for text in response.text_annotations[1:]:
+                    desc = text.description
+                    
+                    # 【対策】「数値:数値」形式（時刻など）が含まれるブロックはスキップする
+                    if re.search(r'\d+[:/]\d+', desc):
+                        continue
+                        
+                    match = re.search(r'\d+', desc)
+                    if match:
+                        val = int(match.group())
+                        vertices = text.bounding_poly.vertices
+                        if vertices:
+                            height = max(v.y for v in vertices) - min(v.y for v in vertices)
+                            cy = sum(v.y for v in vertices) / len(vertices)
+                            measured_numbers.append({'val': val, 'height': height, 'cy': cy})
+            
+            # 文字サイズが大きく、かつ血圧・脈拍として妥当な範囲（40〜250）のものを候補にする
+            valid_items = [item for item in measured_numbers if 40 <= item['val'] <= 250]
+            
+            # 文字サイズの大きい順にソート
+            valid_items.sort(key=lambda x: x['height'], reverse=True)
+            
+            # 上位の大きな数字の中から、画面の上から順（cyが小さい順）に3つ並び替えて取得する
+            if len(valid_items) >= 3:
+                top_three = sorted(valid_items[:6], key=lambda x: x['cy'])
+                if len(top_three) >= 3:
+                    sys_val = top_three[0]['val']
+                    dia_val = top_three[1]['val']
+                    pulse_val = top_three[2]['val']
+                else:
+                    sys_val = valid_items[0]['val']
+                    dia_val = valid_items[1]['val']
+                    pulse_val = valid_items[2]['val']
+            else:
+                # フォールバック処理（時刻「数値:数値」の表現を除外してから抽出）
+                cleaned_text = re.sub(r'\d+[:/]\d+', '', extracted_text)
+                fallback_numbers = [int(num) for num in re.findall(r'\d+', cleaned_text)]
+                valid_nums = [n for n in fallback_numbers if 40 <= n <= 250]
+                if len(valid_nums) >= 3:
+                    sys_val = valid_nums[0]
+                    dia_val = valid_nums[1]
+                    pulse_val = valid_nums[2]
+                else:
+                    sys_val, dia_val, pulse_val = 120, 80, 72
+        else:
+            float_numbers = [float(num) for num in re.findall(r'\d+\.\d+|\d+', extracted_text)]
+            if float_numbers:
+                valid_weights = [w for w in float_numbers if 20 <= w <= 200]
+                weight_val = valid_weights[0] if valid_weights else float_numbers[0]
             else:
                 weight_val = 65.5
-        else:
-            if mode == 'bp':
-                sys_val, dia_val, pulse_val = 125, 82, 70
-            else:
-                weight_val = 60.0
 
         record = {
             "participant_id": participant_id,
@@ -118,24 +174,14 @@ def predict_and_save_vital():
             "pulse": pulse_val,
             "weight": weight_val
         }
-        
-        insert_res = supabase.table("vitals").insert(record).execute()
 
-        # JavaScript側が期待しているキー（extracted_dataなど）に合わせて返すように対応
         return jsonify({
             'success': True,
-            'extracted_data': {
-                'sys': sys_val,
-                'dia': dia_val,
-                'pulse': pulse_val,
-                'weight': weight_val
-            },
-            'data': record,
-            'db_result': insert_res.data
+            'data': record
         })
 
     except Exception as e:
-        print("解析・保存エラー:", e)
+        print("解析エラー:", e)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -149,7 +195,7 @@ def generate_id():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# バイタルデータ（手動入力）の保存API
+# バイタルデータ（手動・保存ボタン押下時）の保存API
 @app.route('/api/vitals', methods=['POST'])
 def save_vital():
     data = request.get_json() or {}
@@ -214,7 +260,6 @@ def get_unread_status():
             pid = msg['participant_id']
             if pid not in latest_msgs:
                 latest_msgs[pid] = msg
-        
         unread_ids = [pid for pid, msg in latest_msgs.items() if msg.get('sender') == 'user']
         return jsonify(unread_ids)
     except Exception as e:
