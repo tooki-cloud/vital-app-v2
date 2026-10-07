@@ -4,7 +4,7 @@ from flask import Flask, render_template, request, jsonify
 from supabase import create_client, Client
 from PIL import Image
 
-# Ultralytics YOLO の読み込み
+# Ultralytics YOLO の読み込み（起動時に1回だけロード）
 try:
     from ultralytics import YOLO
     
@@ -12,6 +12,14 @@ try:
     
     if os.path.exists(MODEL_PATH):
         model = YOLO(MODEL_PATH)
+        # 【追加】起動時のウォームアップ（初回推論をあらかじめ行っておくことで本番リクエストを高速化）
+        try:
+            import numpy as np
+            dummy_img = Image.fromarray(np.zeros((100, 100, 3), dtype=np.uint8))
+            model(dummy_img)
+            print("YOLOモデルのウォームアップが完了しました。")
+        except Exception as e:
+            print(f"ウォームアップ中に軽微なエラー: {e}")
     else:
         model = None
         print(f"Warning: YOLOモデルファイル ({MODEL_PATH}) が見つかりません。")
@@ -75,8 +83,8 @@ def pharmacist_dashboard():
 
 # --- API エンドポイント ---
 
-# 画像解析・数値検出 & Supabase保存 API
-@app.route('/api/predict-vital', methods=['POST'])
+# 画像解析・数値検出 & Supabase保存 API（JavaScript側の /api/ocr-upload に合わせるように修正）
+@app.route('/api/ocr-upload', methods=['POST'])
 def predict_and_save_vital():
     if 'image' not in request.files:
         return jsonify({'success': False, 'error': '画像ファイルが送信されていません'}), 400
@@ -113,8 +121,15 @@ def predict_and_save_vital():
         
         insert_res = supabase.table("vitals").insert(record).execute()
 
+        # JavaScript側が期待しているキー（extracted_dataなど）に合わせて返すように対応
         return jsonify({
             'success': True,
+            'extracted_data': {
+                'sys': sys_val,
+                'dia': dia_val,
+                'pulse': pulse_val,
+                'weight': weight_val
+            },
             'data': record,
             'db_result': insert_res.data
         })
