@@ -16,10 +16,12 @@ async function sendLog(actionDetail) {
     }
 }
 
-// --- ボタンタップ・画面遷移時のログ記録付き関数（ログ送信完了を待って遷移） ---
+// --- 【修正】ダッシュボード等のボタンから呼ばれる画面遷移用の関数 ---
 async function navigateWithLog(url, actionName) {
     await sendLog(`ボタンタップ: ${actionName}`);
-    window.location.href = url;
+    const participantId = localStorage.getItem('participant_id');
+    const targetUrl = participantId ? `${url}?participant_id=${encodeURIComponent(participantId)}` : url;
+    window.location.href = targetUrl;
 }
 
 // --- DOM読み込み完了時の処理 ---
@@ -111,7 +113,7 @@ function startCamera() {
     cameraInput.click();
 }
 
-// --- 画像送信処理（軽量化リサイズ対応版） ---
+// --- 画像送信処理（軽量化リサイズ対応版：自動保存せず入力欄へ反映） ---
 function uploadImage(file) {
     const currentUserId = localStorage.getItem('participant_id') || '0001';
 
@@ -158,7 +160,7 @@ function uploadImage(file) {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-                fetch('/api/ocr-upload', {
+                fetch('/api/predict-vital', {
                     method: 'POST',
                     body: formData,
                     signal: controller.signal
@@ -172,12 +174,21 @@ function uploadImage(file) {
                 })
                 .then(data => {
                     if (data.success) {
-                        const ext = data.extracted_data;
-                        const msg = `画像の送信・保存に成功しました！\n\n【読み取り結果】\n最高血圧: ${ext.sys || '未検出'}\n最低血圧: ${ext.dia || '未検出'}\n脈拍: ${ext.pulse || '未検出'}\n体重: ${ext.weight || '未検出'}`;
+                        const ext = data.data || {};
                         
-                        sendLog('OCR画像解析およびDB保存成功');
-                        alert(msg);
-                        console.log("Supabase保存完了データ:", data);
+                        // 画面上の入力欄に数値を自動反映（自動保存はしない）
+                        const sysInput = document.getElementById('sys') || document.querySelector('input[name="sys"]');
+                        const diaInput = document.getElementById('dia') || document.querySelector('input[name="dia"]');
+                        const pulseInput = document.getElementById('pulse') || document.querySelector('input[name="pulse"]');
+                        const weightInput = document.getElementById('weight') || document.querySelector('input[name="weight"]');
+
+                        if (sysInput && ext.sys) sysInput.value = ext.sys;
+                        if (diaInput && ext.dia) diaInput.value = ext.dia;
+                        if (pulseInput && ext.pulse) pulseInput.value = ext.pulse;
+                        if (weightInput && ext.weight) weightInput.value = ext.weight;
+
+                        sendLog('OCR画像解析成功（入力欄に反映）');
+                        console.log("解析データ反映完了:", ext);
                     } else {
                         sendLog('OCR画像解析エラー発生');
                         alert("送信エラー: " + (data.message || data.error));
@@ -199,4 +210,40 @@ function uploadImage(file) {
         img.src = e.target.result;
     };
     reader.readAsDataURL(file);
+}
+
+// --- 「保存」ボタンが押されたときの処理 ---
+async function saveVitalData() {
+    const currentUserId = localStorage.getItem('participant_id') || '0001';
+    
+    const sys = document.getElementById('sys')?.value || document.querySelector('input[name="sys"]')?.value || null;
+    const dia = document.getElementById('dia')?.value || document.querySelector('input[name="dia"]')?.value || null;
+    const pulse = document.getElementById('pulse')?.value || document.querySelector('input[name="pulse"]')?.value || null;
+    const weight = document.getElementById('weight')?.value || document.querySelector('input[name="weight"]')?.value || null;
+
+    try {
+        const response = await fetch('/api/vitals', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                participant_id: currentUserId,
+                sys: sys ? Number(sys) : null,
+                dia: dia ? Number(dia) : null,
+                pulse: pulse ? Number(pulse) : null,
+                weight: weight ? Number(weight) : null
+            })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            alert("データを保存しました！");
+            sendLog('バイタルデータを手動保存');
+            window.location.href = `/?participant_id=${currentUserId}`;
+        } else {
+            alert("保存に失敗しました: " + (data.error || "不明なエラー"));
+        }
+    } catch (e) {
+        console.error("保存エラー:", e);
+        alert("保存時の通信エラーが発生しました。");
+    }
 }
