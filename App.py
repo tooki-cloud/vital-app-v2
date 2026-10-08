@@ -330,6 +330,28 @@ def pharmacist_change_password():
         f.write(new_pass_input.strip())
         
     return jsonify({"success": True, "message": "パスワードを変更しました"})
+# 未読状況確認 API (患者さん側用) [追加]
+@app.route('/api/messages/patient-unread', methods=['GET'])
+def patient_unread():
+    participant_id = request.args.get('participant_id', '0001')
+    try:
+        res = supabase.table('messages').select('*').eq('participant_id', participant_id).order('created_at', desc=True).execute()
+        messages = res.data or []
+        
+        if not messages:
+            return jsonify({'has_unread': False})
+        
+        latest_msg = messages[0]
+        has_unread = (latest_msg.get('sender') == 'pharmacist')
+        
+        return jsonify({'has_unread': has_unread})
+    except Exception as e:
+        return jsonify({'has_unread': False, 'error': str(e)})
+
+# 既読処理 API (患者さん側用) [追加]
+@app.route('/api/messages/patient-read', methods=['POST'])
+def patient_read():
+    return jsonify({'success': True})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
