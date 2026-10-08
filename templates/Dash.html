@@ -163,11 +163,11 @@
             <span class="nav-btn-icon">📷</span>
             <span>測定・記録</span>
         </button>
-        <button class="nav-btn" onclick="navigateWithLog('/chat', 'チャット画面へ移動')">
-            <span class="nav-btn-icon">💬</span>
-            <span>相談チャット</span>
-        </button>
-    </div>
+        <button class="nav-btn" id="chatNavBtn" onclick="navigateWithLog('/chat', '相談チャットへ移動')">
+    　　　　<span class="nav-btn-icon">💬</span>
+    　　　　<span>相談チャット</span>
+　　　　 </button>
+     </div>
 
     <!-- 血圧推移グラフ -->
     <div class="card">
@@ -219,6 +219,8 @@
             updateLatestVitals(rawVitals);
             renderCharts(rawVitals);
         }
+        　　checkPatientUnreadStatus();
+        　　setInterval(checkPatientUnreadStatus, 5000);
     });
 
     function updateLatestVitals(data) {
@@ -338,6 +340,24 @@
             }, 50);
         }
     }
+    // 未読チェック用関数 [追加]
+async function checkPatientUnreadStatus() {
+    const participantId = localStorage.getItem('participant_id') || '0001';
+    try {
+        const res = await fetch(`/api/messages/patient-unread?participant_id=${participantId}`);
+        const data = await res.json();
+        const chatBtn = document.getElementById('chatNavBtn');
+        if (chatBtn) {
+            if (data.has_unread) {
+                chatBtn.classList.add('has-unread');
+            } else {
+                chatBtn.classList.remove('has-unread');
+            }
+        }
+    } catch (e) {
+        console.error("未読チェックエラー:", e);
+    }
+}
 </script>
 
 </body>
