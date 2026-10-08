@@ -182,12 +182,11 @@
         await sendLog(`ボタンタップ: ${actionName}`);
         window.location.href = url;
     }
-
-    // 初回ロード時処理
     window.addEventListener('DOMContentLoaded', () => {
-        sendLog('チャット画面を表示');
-        loadChatHistory();
-    });
+   　　 sendLog('チャット画面を表示');
+    　　loadChatHistory();
+    　　markAsRead(); // ★ 追加：チャット画面を開いたときに既読処理を実行
+　　});
 
     // 過去のチャット履歴を取得して画面に描画
     async function loadChatHistory() {
@@ -287,6 +286,18 @@
             return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
         });
     }
+
+    async function markAsRead() {
+    try {
+        await fetch('/api/messages/patient-read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ participant_id: participantId })
+        });
+    } catch (e) {
+        console.error('既読処理エラー:', e);
+    }
+}
 </script>
 
 </body>
