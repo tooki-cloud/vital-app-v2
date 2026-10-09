@@ -281,7 +281,7 @@ def save_log():
         return jsonify({'success': False, 'message': 'Missing parameters'}), 400
 
     try:
-        response = supabase.table("logs").insert({"participant_id": participant_id, "log": log_text}).execute()
+        response = supabase.table("user_logs").insert({"participant_id": participant_id, "log": log_text}).execute() # ← "user_logs" に変更する
         return jsonify({"success": True, "data": response.data})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
