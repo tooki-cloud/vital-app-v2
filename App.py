@@ -95,7 +95,6 @@ def predict_and_save_vital():
         # Google Cloud Vision API による高精度な文字検出
         if HAS_VISION_API:
             try:
-                # ※ "あなたのAPIキーをここに貼り付け" の部分にご自身のGoogle Cloud Vision APIキーを設定してください
                 client = vision.ImageAnnotatorClient(client_options={"api_key":"AIzaSyBpHLQIsovNC_8OeddAkyi9A9B9hlZvrZE"})
                 
                 image_obj = vision.Image(content=image_bytes_data)
@@ -118,7 +117,6 @@ def predict_and_save_vital():
                 for text in response.text_annotations[1:]:
                     desc = text.description
                     
-                    # 【対策】「数値:数値」形式（時刻など）が含まれるブロックはスキップする
                     if re.search(r'\d+[:/]\d+', desc):
                         continue
                         
@@ -131,13 +129,9 @@ def predict_and_save_vital():
                             cy = sum(v.y for v in vertices) / len(vertices)
                             measured_numbers.append({'val': val, 'height': height, 'cy': cy})
             
-            # 文字サイズが大きく、かつ血圧・脈拍として妥当な範囲（40〜250）のものを候補にする
             valid_items = [item for item in measured_numbers if 40 <= item['val'] <= 250]
-            
-            # 文字サイズの大きい順にソート
             valid_items.sort(key=lambda x: x['height'], reverse=True)
             
-            # 上位の大きな数字の中から、画面の上から順（cyが小さい順）に3つ並び替えて取得する
             if len(valid_items) >= 3:
                 top_three = sorted(valid_items[:6], key=lambda x: x['cy'])
                 if len(top_three) >= 3:
@@ -149,7 +143,6 @@ def predict_and_save_vital():
                     dia_val = valid_items[1]['val']
                     pulse_val = valid_items[2]['val']
             else:
-                # フォールバック処理（時刻「数値:数値」の表現を除外してから抽出）
                 cleaned_text = re.sub(r'\d+[:/]\d+', '', extracted_text)
                 fallback_numbers = [int(num) for num in re.findall(r'\d+', cleaned_text)]
                 valid_nums = [n for n in fallback_numbers if 40 <= n <= 250]
@@ -160,10 +153,23 @@ def predict_and_save_vital():
                 else:
                     sys_val, dia_val, pulse_val = 120, 80, 72
         else:
-            float_numbers = [float(num) for num in re.findall(r'\d+\.\d+|\d+', extracted_text)]
+            cleaned_text = re.sub(r'\d+[:/]\d+', '', extracted_text)
+            matches = re.findall(r'\d+\.\d+|\d+', cleaned_text)
+            float_numbers = []
+            
+            for m in matches:
+                if '.' in m:
+                    float_numbers.append(float(m))
+                else:
+                    if len(m) in [3, 4]:
+                        corrected = float(m[:-1] + '.' + m[-1])
+                        float_numbers.append(corrected)
+                    else:
+                        float_numbers.append(float(m))
+
             if float_numbers:
-                valid_weights = [w for w in float_numbers if 20 <= w <= 200]
-                weight_val = valid_weights[0] if valid_weights else float_numbers[0]
+                valid_weights = [w for w in float_numbers if 40 <= w <= 150]
+                weight_val = valid_weights[-1] if valid_weights else float_numbers[-1]
             else:
                 weight_val = 65.5
 
@@ -248,7 +254,7 @@ def send_chat_message():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# 未読状況確認 API
+# 未読状況確認 API (薬剤師側用)
 @app.route('/api/messages/unread-status', methods=['GET'])
 def get_unread_status():
     try:
@@ -264,6 +270,29 @@ def get_unread_status():
         return jsonify(unread_ids)
     except Exception as e:
         return jsonify([]), 500
+
+# 未読状況確認 API (患者さん側用) [追加]
+@app.route('/api/messages/patient-unread', methods=['GET'])
+def patient_unread():
+    participant_id = request.args.get('participant_id', '0001')
+    try:
+        res = supabase.table('messages').select('*').eq('participant_id', participant_id).order('created_at', desc=True).execute()
+        messages = res.data or []
+        
+        if not messages:
+            return jsonify({'has_unread': False})
+        
+        latest_msg = messages[0]
+        has_unread = (latest_msg.get('sender') == 'pharmacist')
+        
+        return jsonify({'has_unread': has_unread})
+    except Exception as e:
+        return jsonify({'has_unread': False, 'error': str(e)})
+
+# 既読処理 API (患者さん側用) [追加]
+@app.route('/api/messages/patient-read', methods=['POST'])
+def patient_read():
+    return jsonify({'success': True})
 
 # 既読処理 API
 @app.route('/api/messages/mark-as-read', methods=['POST'])
@@ -281,7 +310,7 @@ def save_log():
         return jsonify({'success': False, 'message': 'Missing parameters'}), 400
 
     try:
-        response = supabase.table("user_logs").insert({"participant_id": participant_id, "log": log_text}).execute() # ← "user_logs" に変更する
+        response = supabase.table("logs").insert({"participant_id": participant_id, "log": log_text}).execute()
         return jsonify({"success": True, "data": response.data})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -330,28 +359,6 @@ def pharmacist_change_password():
         f.write(new_pass_input.strip())
         
     return jsonify({"success": True, "message": "パスワードを変更しました"})
-# 未読状況確認 API (患者さん側用) [追加]
-@app.route('/api/messages/patient-unread', methods=['GET'])
-def patient_unread():
-    participant_id = request.args.get('participant_id', '0001')
-    try:
-        res = supabase.table('messages').select('*').eq('participant_id', participant_id).order('created_at', desc=True).execute()
-        messages = res.data or []
-        
-        if not messages:
-            return jsonify({'has_unread': False})
-        
-        latest_msg = messages[0]
-        has_unread = (latest_msg.get('sender') == 'pharmacist')
-        
-        return jsonify({'has_unread': has_unread})
-    except Exception as e:
-        return jsonify({'has_unread': False, 'error': str(e)})
-
-# 既読処理 API (患者さん側用) [追加]
-@app.route('/api/messages/patient-read', methods=['POST'])
-def patient_read():
-    return jsonify({'success': True})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
