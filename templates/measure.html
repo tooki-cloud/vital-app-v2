@@ -25,21 +25,21 @@
         .header-icon { font-size: 1.2rem; color: #4a5568; text-decoration: none; cursor: pointer; font-weight: bold; }
         .header-title { font-size: 1.15rem; font-weight: bold; color: #2d3748; }
 
-        /* モード選択タブ */
+        /* モード選択タブ（大きく強調） */
         .mode-selector {
             display: flex;
-            background: #edf2f7;
-            padding: 4px;
-            border-radius: 12px;
-            gap: 4px;
+            background: #e2e8f0;
+            padding: 6px;
+            border-radius: 16px;
+            gap: 6px;
         }
         .mode-tab {
             flex: 1;
-            padding: 10px 0;
+            padding: 16px 0;
             border: none;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            font-weight: bold;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 800;
             color: #4a5568;
             background: transparent;
             cursor: pointer;
@@ -47,8 +47,8 @@
         }
         .mode-tab.active {
             background: #ffffff;
-            color: #2d3748;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            color: #1e293b;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.12);
         }
 
         /* カメラ表示領域 */
@@ -96,25 +96,29 @@
         .btn-secondary { background: #e2e8f0; color: #2d3748; }
 
         /* フォーム入力領域 */
-        .form-container { display: flex; flex-direction: column; gap: 4px; }
+        .form-container { display: flex; flex-direction: column; gap: 8px; }
         .form-group {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid #edf2f7;
+            padding: 10px 12px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
         }
         .form-label { display: flex; flex-direction: column; }
-        .label-ja { font-size: 0.9rem; font-weight: bold; color: #2d3748; }
-        .label-en { font-size: 0.65rem; color: #a0aec0; }
+        .label-ja { font-size: 1rem; font-weight: bold; color: #2d3748; }
+        .label-en { font-size: 0.7rem; color: #a0aec0; }
         .form-input {
-            width: 100px;
-            padding: 8px;
+            width: 165px;
+            padding: 8px 10px;
             text-align: center;
             border: 1px solid #cbd5e0;
             border-radius: 10px;
-            font-size: 0.95rem;
+            font-size: 1.5rem;
+            font-weight: bold;
             outline: none;
+            background: #ffffff;
         }
         .form-input:focus { border-color: #3b4252; }
     </style>
@@ -128,7 +132,7 @@
         <span style="font-size: 1.1rem; color: #4a5568;">📷</span>
     </div>
 
-    <!-- モード選択タブ -->
+    <!-- モード選択タブ（大きく強調） -->
     <div class="mode-selector">
         <button id="tabBp" class="mode-tab active" onclick="switchMode('bp')">血圧を測定</button>
         <button id="tabWeight" class="mode-tab" onclick="switchMode('weight')">体重を測定</button>
