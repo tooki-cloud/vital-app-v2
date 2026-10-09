@@ -22,17 +22,7 @@
             gap: 16px;
             position: relative;
         }
-        
-        .nav-btn.has-unread {
-            background: #ef4444 !important;
-            animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-            70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-        }
-        
+
         /* ヘッダー */
         .header { display: flex; justify-content: space-between; align-items: center; }
         .header-title { font-size: 1.1rem; font-weight: bold; color: #2d3748; }
@@ -76,19 +66,32 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 14px;
+            padding: 18px 8px;
             background: #2d3748;
             color: #ffffff;
             border: none;
             border-radius: 16px;
             text-decoration: none;
             font-weight: bold;
-            font-size: 0.85rem;
+            font-size: 0.95rem;
             cursor: pointer;
-            gap: 4px;
+            gap: 2px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            transition: background 0.2s;
+            line-height: 1.3;
+            text-align: center;
         }
-        .nav-btn-icon { font-size: 1.2rem; }
+
+        /* 相談チャットボタン未読時の赤点滅スタイル */
+        .nav-btn.has-unread {
+            background: #ef4444 !important;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
 
         /* 初回利用モーダル */
         .overlay {
@@ -119,7 +122,7 @@
         }
     </style>
 </head>
-<body>
+<body id="dashboard-body" data-vitals='{{ vitals | tojson | safe }}'>
 
 <div class="phone-frame">
     <!-- 初回起動モーダル -->
@@ -157,17 +160,16 @@
         </div>
     </div>
 
-    <!-- 画面遷移ボタン（最新の記録と血圧推移の間へ移動） -->
+    <!-- 画面遷移ボタン -->
     <div class="nav-buttons">
         <button class="nav-btn" onclick="navigateWithLog('/measure', '測定画面へ移動')">
-            <span class="nav-btn-icon">📷</span>
-            <span>測定・記録</span>
+            <span>血圧測定</span>
+            <span>体重測定</span>
         </button>
         <button class="nav-btn" id="chatNavBtn" onclick="navigateWithLog('/chat', '相談チャットへ移動')">
-    　　　　<span class="nav-btn-icon">💬</span>
-    　　　　<span>相談チャット</span>
-　　　　 </button>
-     </div>
+            <span>相談チャット</span>
+        </button>
+    </div>
 
     <!-- 血圧推移グラフ -->
     <div class="card">
@@ -194,7 +196,14 @@
 <script src="{{ url_for('static', filename='script.js') }}"></script>
 
 <script>
-    let rawVitals = {{ vitals | tojson | safe }};
+    // エラーが出ないようにHTMLのデータ属性から安全にデータを取得
+    let rawVitals = [];
+    try {
+        const rawAttr = document.getElementById('dashboard-body').getAttribute('data-vitals');
+        rawVitals = JSON.parse(rawAttr);
+    } catch (e) {
+        rawVitals = [];
+    }
 
     document.addEventListener('DOMContentLoaded', async () => {
         const participantId = localStorage.getItem('participant_id') || '0001';
@@ -219,26 +228,44 @@
             updateLatestVitals(rawVitals);
             renderCharts(rawVitals);
         }
-        　　checkPatientUnreadStatus();
-        　　setInterval(checkPatientUnreadStatus, 5000);
+
+        // 薬剤師からの未読状況を定期チェックする処理
+        checkPatientUnreadStatus();
+        setInterval(checkPatientUnreadStatus, 5000);
     });
 
+    // 未読チェック用関数
+    async function checkPatientUnreadStatus() {
+        const participantId = localStorage.getItem('participant_id') || '0001';
+        try {
+            const res = await fetch(`/api/messages/patient-unread?participant_id=${participantId}`);
+            const data = await res.json();
+            const chatBtn = document.getElementById('chatNavBtn');
+            if (chatBtn) {
+                if (data.has_unread) {
+                    chatBtn.classList.add('has-unread');
+                } else {
+                    chatBtn.classList.remove('has-unread');
+                }
+            }
+        } catch (e) {
+            console.error("未読チェックエラー:", e);
+        }
+    }
+
     function updateLatestVitals(data) {
-        // 最新の血圧・脈拍
         const latestBp = [...data].reverse().find(item => item.sys !== null && item.sys !== undefined);
         if (latestBp) {
             document.getElementById('latest-bp').innerText = `${latestBp.sys} / ${latestBp.dia || '--'}`;
             document.getElementById('latest-pulse').innerText = latestBp.pulse || '--';
         }
 
-        // 最新の体重
         const latestWeight = [...data].reverse().find(item => item.weight !== null && item.weight !== undefined);
         if (latestWeight) {
             document.getElementById('latest-weight').innerText = latestWeight.weight;
         }
     }
 
-    // 時刻フォーマット補助関数
     function formatDateLabel(dateStr) {
         if (!dateStr) return '';
         const d = new Date(dateStr);
@@ -250,33 +277,27 @@
     }
 
     function renderCharts(data) {
-        // 1. 血圧データ抽出
         const bpRecords = data.filter(item => item.sys !== null && item.sys !== undefined);
         const bpLabels = bpRecords.map(item => formatDateLabel(item.created_at));
         const sysData = bpRecords.map(item => item.sys);
         const diaData = bpRecords.map(item => item.dia);
         const pulseData = bpRecords.map(item => item.pulse);
 
-        // 2. 体重データ抽出
         const weightRecords = data.filter(item => item.weight !== null && item.weight !== undefined);
         const weightLabels = weightRecords.map(item => formatDateLabel(item.created_at));
         const weightData = weightRecords.map(item => item.weight);
 
-        // --- 動的な幅計算 (データが詰まらないように1件あたり45px確保) ---
-        const pxPerItem = 45; // 1項目あたりの幅
-        const minWidth = 310; // カード内最小幅
+        const pxPerItem = 45;
+        const minWidth = 310;
 
-        // 血圧グラフの幅決定 (10件以上ある場合やデータ数に応じて伸ばす)
         const bpWidth = Math.max(minWidth, bpRecords.length * pxPerItem);
         const bpInner = document.getElementById('bpInnerContainer');
         bpInner.style.width = bpWidth + 'px';
 
-        // 体重グラフの幅決定
         const weightWidth = Math.max(minWidth, weightRecords.length * pxPerItem);
         const weightInner = document.getElementById('weightInnerContainer');
         weightInner.style.width = weightWidth + 'px';
 
-        // --- 血圧グラフ ---
         const bpCtx = document.getElementById('bpChart');
         if (bpCtx) {
             new Chart(bpCtx, {
@@ -296,22 +317,18 @@
                     scales: { 
                         y: { 
                             beginAtZero: false,
-                            ticks: {
-                                stepSize: 40
-                            }
+                            ticks: { stepSize: 40 }
                         } 
                     }
                 }
             });
 
-            // 最新データが見えるように自動的に右端までスクロール
             setTimeout(() => {
                 const bpWrapper = document.getElementById('bpScrollWrapper');
                 if (bpWrapper) bpWrapper.scrollLeft = bpWrapper.scrollWidth;
             }, 50);
         }
 
-        // --- 体重グラフ ---
         const weightCtx = document.getElementById('weightChart');
         if (weightCtx) {
             new Chart(weightCtx, {
@@ -325,39 +342,17 @@
                     maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                        y: {
-                            min: 40,
-                            max: 120
-                        }
+                        y: { min: 40, max: 120 }
                     }
                 }
             });
 
-            // 最新データが見えるように自動的に右端までスクロール
             setTimeout(() => {
                 const weightWrapper = document.getElementById('weightScrollWrapper');
                 if (weightWrapper) weightWrapper.scrollLeft = weightWrapper.scrollWidth;
             }, 50);
         }
     }
-    // 未読チェック用関数 [追加]
-async function checkPatientUnreadStatus() {
-    const participantId = localStorage.getItem('participant_id') || '0001';
-    try {
-        const res = await fetch(`/api/messages/patient-unread?participant_id=${participantId}`);
-        const data = await res.json();
-        const chatBtn = document.getElementById('chatNavBtn');
-        if (chatBtn) {
-            if (data.has_unread) {
-                chatBtn.classList.add('has-unread');
-            } else {
-                chatBtn.classList.remove('has-unread');
-            }
-        }
-    } catch (e) {
-        console.error("未読チェックエラー:", e);
-    }
-}
 </script>
 
 </body>
