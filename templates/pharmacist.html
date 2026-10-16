@@ -3,6 +3,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>薬剤師用管理ダッシュボード</title>
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='慶應_血圧.png') }}">
+    <!-- Android / PC (Chrome等) 用 -->
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <!-- ファビコン（タブ用） -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='慶應_血圧.png') }}">
+    <!-- Chart.js 読み込み -->
     <!-- Chart.js 読み込み -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
