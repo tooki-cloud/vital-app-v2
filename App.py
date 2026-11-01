@@ -142,6 +142,12 @@ def predict_and_save_vital():
                     sys_val = valid_items[0]['val']
                     dia_val = valid_items[1]['val']
                     pulse_val = valid_items[2]['val']
+            elif len(valid_items) == 2:
+                # 2つの数値が検出された場合、画面上の位置（cy）で上から順に並び替え
+                sorted_two = sorted(valid_items, key=lambda x: x['cy'])
+                sys_val = sorted_two[0]['val']
+                dia_val = sorted_two[1]['val']
+                pulse_val = None
             else:
                 cleaned_text = re.sub(r'\d+[:/]\d+', '', extracted_text)
                 fallback_numbers = [int(num) for num in re.findall(r'\d+', cleaned_text)]
@@ -150,6 +156,10 @@ def predict_and_save_vital():
                     sys_val = valid_nums[0]
                     dia_val = valid_nums[1]
                     pulse_val = valid_nums[2]
+                elif len(valid_nums) == 2:
+                    sys_val = valid_nums[0]
+                    dia_val = valid_nums[1]
+                    pulse_val = None
                 else:
                     sys_val, dia_val, pulse_val = 120, 80, 72
         else:
