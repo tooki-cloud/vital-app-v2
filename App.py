@@ -22,6 +22,10 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 PASS_FILE = "password.txt"
 
+# ユーザーごとの最後に既読にしたメッセージの時刻を保持するメモリ
+last_read_messages = {}          # 患者側用
+last_read_pharmacist = {}        # 薬剤師側用（患者ID: 既読にしたユーザーメッセージのcreated_at）
+
 def get_saved_password():
     if os.path.exists(PASS_FILE):
         with open(PASS_FILE, "r", encoding="utf-8") as f:
@@ -276,12 +280,22 @@ def get_unread_status():
             pid = msg['participant_id']
             if pid not in latest_msgs:
                 latest_msgs[pid] = msg
-        unread_ids = [pid for pid, msg in latest_msgs.items() if msg.get('sender') == 'user']
+        
+        unread_ids = []
+        for pid, msg in latest_msgs.items():
+            if msg.get('sender') == 'user':
+                last_read_time = last_read_pharmacist.get(pid)
+                msg_time = msg.get('created_at')
+                # ユーザーからの最新メッセージの時刻が、既読にした時刻より新しい場合のみ未読とする
+                if last_read_time and msg_time <= last_read_time:
+                    continue
+                unread_ids.append(pid)
+                
         return jsonify(unread_ids)
     except Exception as e:
         return jsonify([]), 500
 
-# 未読状況確認 API (患者さん側用) [追加]
+# 未読状況確認 API (患者さん側用)
 @app.route('/api/messages/patient-unread', methods=['GET'])
 def patient_unread():
     participant_id = request.args.get('participant_id', '0001')
@@ -293,21 +307,45 @@ def patient_unread():
             return jsonify({'has_unread': False})
         
         latest_msg = messages[0]
-        has_unread = (latest_msg.get('sender') == 'pharmacist')
+        if latest_msg.get('sender') == 'pharmacist':
+            last_read_id = last_read_messages.get(participant_id)
+            if last_read_id == latest_msg.get('id') or last_read_id == latest_msg.get('created_at'):
+                return jsonify({'has_unread': False})
+            return jsonify({'has_unread': True})
         
-        return jsonify({'has_unread': has_unread})
+        return jsonify({'has_unread': False})
     except Exception as e:
         return jsonify({'has_unread': False, 'error': str(e)})
 
-# 既読処理 API (患者さん側用) [追加]
+# 既読処理 API (患者さん側用)
 @app.route('/api/messages/patient-read', methods=['POST'])
 def patient_read():
-    return jsonify({'success': True})
+    data = request.get_json() or {}
+    participant_id = data.get('participant_id', '0001')
+    try:
+        res = supabase.table('messages').select('*').eq('participant_id', participant_id).order('created_at', desc=True).limit(1).execute()
+        if res.data:
+            latest_msg = res.data[0]
+            last_read_messages[participant_id] = latest_msg.get('id') or latest_msg.get('created_at')
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': True})
 
-# 既読処理 API
+# 既読処理 API (薬剤師側用)
 @app.route('/api/messages/mark-as-read', methods=['POST'])
 def mark_as_read():
-    return jsonify({'success': True})
+    data = request.get_json() or {}
+    participant_id = data.get('participant_id')
+    if not participant_id:
+        return jsonify({'success': False, 'error': 'participant_id is required'}), 400
+    try:
+        # その患者からの最新メッセージの created_at を取得して既読時刻として記録
+        res = supabase.table('messages').select('created_at').eq('participant_id', participant_id).eq('sender', 'user').order('created_at', desc=True).limit(1).execute()
+        if res.data:
+            last_read_pharmacist[participant_id] = res.data[0].get('created_at')
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': True})
 
 @app.route('/api/log', methods=['POST'])
 @app.route('/api/logs', methods=['POST'])
