@@ -178,7 +178,7 @@ def predict_and_save_vital():
                         float_numbers.append(float(m))
 
             if float_numbers:
-                valid_weights = [w for w in float_numbers if 40 <= w <= 150]
+                valid_weights = [w for w in float_numbers if 25 <= w <= 150]
                 weight_val = valid_weights[-1] if valid_weights else float_numbers[-1]
             else:
                 weight_val = 65.5
