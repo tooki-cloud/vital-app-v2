@@ -597,7 +597,6 @@
         fetch('/api/messages/unread-status')
             .then(res => res.json())
             .then(unreadList => {
-                // unreadList 例: ["0001", "0003"]
                 unreadPatients = new Set(unreadList);
                 
                 // 新規未読の発生を検知した場合にデスクトップ通知を表示
