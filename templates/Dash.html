@@ -172,7 +172,7 @@
             <span>血圧測定</span>
             <span>体重測定</span>
         </button>
-        <button class="nav-btn" id="chatNavBtn" onclick="navigateWithLog('/chat', '相談チャットへ移動')">
+        <button class="nav-btn" id="chatNavBtn" onclick="openChatWithRead('/chat', '相談チャットへ移動')">
             <span>相談チャット</span>
         </button>
     </div>
@@ -239,6 +239,21 @@
         checkPatientUnreadStatus();
         setInterval(checkPatientUnreadStatus, 5000);
     });
+
+    // 相談チャット遷移時に既読処理を実行する関数
+    async function openChatWithRead(url, actionName) {
+        const participantId = localStorage.getItem('participant_id') || '0001';
+        try {
+            await fetch('/api/messages/patient-read', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ participant_id: participantId })
+            });
+        } catch (e) {
+            console.error("既読処理エラー:", e);
+        }
+        navigateWithLog(url, actionName);
+    }
 
     // 未読チェック用関数
     async function checkPatientUnreadStatus() {
